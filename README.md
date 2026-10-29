@@ -2,10 +2,13 @@
 
 Connect any MCP-capable AI agent (Claude Code, Claude Desktop, Cursor, VS Code, Codex, Gemini CLI…) to **your** EdgePress site — CMS or store — with a personal access token.
 
-Two tools:
+Three tools:
 
 - `ep_request` — call your site's REST API (`/api/v1`), e.g. `GET /posts?limit=3`, `POST /pages`.
-- `ep_api_spec` — look up routes and request bodies in the [OpenAPI spec](https://api-docs.edgepress.cc).
+- `ep_media_upload` — upload an image, video, audio file or PDF (up to 20MB) from a public URL or base64, into the media library (published with alt text) or onto a store product.
+- `ep_api_spec` — look up routes and request bodies in the [OpenAPI spec](https://api-docs.edgepress.cc), scoped to your site's product (CMS or store).
+
+Two prompts: `build-landing-page` (new template, blocks and images, stopping at a draft for your review) and `qa-landing-page` (a read-only review before a page goes live).
 
 The token decides what the agent can do: its role, and whether it is `read_only`. Nothing else is granted.
 
@@ -59,7 +62,8 @@ For clients that only run local servers (e.g. Claude Desktop):
 
 ## Limits
 
-- Media upload (multipart) is not available through MCP — use the admin UI.
+- Uploads are capped at 20MB; larger videos go through the admin UI.
+- CMS sites have no private preview yet, so `build-landing-page` leaves the page as a draft and asks before publishing.
 - Large responses are truncated at 50k characters; page list endpoints instead.
 
 `src/mcp.js` is a copy of `dispatcher/src/mcp.js` in the EdgePress platform repo — do not edit it here.

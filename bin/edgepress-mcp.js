@@ -14,19 +14,21 @@ const SPEC_URL = process.env.EDGEPRESS_SPEC_URL ?? 'https://api-docs.edgepress.c
 
 const host = {
   async api(method, path, body) {
+    // FormData (ep_media_upload) goes as-is so its multipart boundary is set.
+    const isForm = body instanceof FormData;
     const r = await fetch(`https://${tenant}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
     const text = await r.text();
     let parsed = text;
     try { parsed = text ? JSON.parse(text) : null; } catch { /* non-JSON body: pass through */ }
-    return { status: r.status, body: parsed };
+    return { status: r.status, body: parsed, headers: r.headers };
   },
   async loadSpec() {
     const r = await fetch(SPEC_URL);
