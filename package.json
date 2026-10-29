@@ -1,0 +1,14 @@
+{
+  "name": "@edgepress/mcp",
+  "version": "0.1.0",
+  "description": "MCP server (stdio) for an EdgePress site's REST API, authenticated with your personal access token.",
+  "license": "MIT",
+  "author": "edgepress-cc",
+  "homepage": "https://github.com/edgepress-cc/mcp-edgepress",
+  "repository": "github:edgepress-cc/mcp-edgepress",
+  "type": "module",
+  "bin": { "edgepress-mcp": "./bin/edgepress-mcp.js" },
+  "files": ["bin/", "src/", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=22" }
+}
