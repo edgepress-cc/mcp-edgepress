@@ -16,7 +16,7 @@
 // generic request plus a spec lookup — the MCP layer cannot drift from the
 // API's authorization or its route table.
 
-export const SERVER_INFO = { name: 'edgepress', version: '0.2.0' };
+export const SERVER_INFO = { name: 'edgepress', version: '0.3.0' };
 
 // Newest first. An unknown client version gets our newest; the client
 // disconnects if it cannot speak it (spec: lifecycle / version negotiation).
@@ -37,6 +37,7 @@ const INSTRUCTIONS = `You are connected to one EdgePress site (CMS or store) wit
 - Block types: on a CMS site GET /blocks lists them and GET /blocks/<type>/schema gives each one's config; on a store use /block-types and /block-types/<slug>/schema.
 - Page structure on a CMS site: prefer the REST routes (/templates, /templates/<id>/zones, /templates/<id>/blocks, /blocks/<id>, PUT /pages/<id>/template) over POST /graphql, which answers HTTP 200 even on failure. REST PATCH /blocks/<id> merges config; GraphQL replaces it.
 - Files: use ep_media_upload (from a URL or base64), never ep_request.
+- To see a page as visitors get it — robots, title, headings, structured data, images, lang/dir — use ep_page_inspect. With page_id it also works for drafts, through a private noindex preview link (GET /pages/<id>/preview-url; give that url to the user to look at a draft).
 - Prompts build-landing-page and qa-landing-page describe the safe end-to-end flows.`;
 
 // ep_media_upload. The CMS caps images at 20MB; one cap for every type keeps the
@@ -79,6 +80,19 @@ const TOOLS = [
     },
   },
   {
+    name: 'ep_page_inspect',
+    description: 'Fetch a page of the connected site as a visitor gets it and report what matters for SEO and QA: HTTP status, robots (meta and X-Robots-Tag), title, description, canonical, lang/dir, headings, JSON-LD types, images missing alt or hot-linked, and in-page links to anchors that do not exist. Read-only.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        page_id: { type: 'integer', description: 'CMS page id. Works for drafts too, through a private preview link (needs editor or admin).' },
+        path: { type: 'string', description: 'Site path, e.g. "/", "/page/about", "/post/hello". Ignored when page_id is given.' },
+      },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
     name: 'ep_api_spec',
     description: 'Look up the EdgePress OpenAPI spec. No arguments: an index of every route. search: routes whose path, summary or tag contains the text (full detail when 10 or fewer match). schema: one component schema by name, for resolving a $ref.',
     inputSchema: {
@@ -101,7 +115,7 @@ const TOOLS = [
 const PROMPTS = [
   {
     name: 'build-landing-page',
-    description: 'Build a landing page as a draft: new template, zones, blocks and uploaded images, then stop for review.',
+    description: 'Build a landing page as a draft: new template, zones, blocks and uploaded images, a private preview and a check, then stop for review.',
     arguments: [
       { name: 'goal', description: 'What the page is for and what it should say.', required: true },
       { name: 'slug', description: 'URL slug for the page, e.g. "spring-sale".', required: false },
@@ -113,14 +127,15 @@ Work in this order:
 2. GET /blocks, then GET /blocks/<type>/schema for every type you will use. Put only schema fields in a config.
 3. Upload each image with ep_media_upload, with real alt text, and use the returned url. Do not hot-link images from other sites.
 4. Create a NEW template; never edit an existing or default one. POST /templates {"name":"…","type":"PAGE"}, then POST /templates/<id>/zones {"name":"Main","slug":"main","orderIndex":0}, then one POST /templates/<id>/blocks per block {"zoneSlug":"main","blockType":"…","config":{…}}. A 400 lists validationErrors: fix the named field, never retry unchanged.
-5. Create the page as a draft (POST /pages with status "draft"; check the body with ep_api_spec search "/api/pages"), then PUT /pages/<pageId>/template {"templateId":"<id>"}, then POST /templates/<id>/publish.
-6. Report the template id, page id, blocks and media ids. Do NOT set the page to published: it becomes public immediately and there is no private preview on a CMS site. Ask the user first.
+5. Create the page as a draft (POST /pages with status "draft"; check the body with ep_api_spec search "/api/pages"). Set its "robots" field to "noindex, nofollow" unless the user wants it indexed. Then PUT /pages/<pageId>/template {"templateId":"<id>"} and POST /templates/<id>/publish.
+6. Check it: ep_page_inspect with page_id renders the draft through a private noindex preview. Fix any missing alt text, extra h1, broken anchor or invalid JSON-LD it reports.
+7. Report the template id, page id, blocks and media ids, and the preview link from GET /pages/<pageId>/preview-url so the user can look at it. Do NOT set the page to published: it becomes public immediately. Ask the user first.
 
 Never change settings, the theme, or any template you did not create in this conversation.`,
   },
   {
     name: 'qa-landing-page',
-    description: 'Review a page\'s stored content, SEO fields, blocks and images before it goes live. Read-only.',
+    description: 'Review a page before it goes live — what visitors will get and what is stored. Read-only.',
     arguments: [{ name: 'page_id', description: 'The page to review.', required: true }],
     text: ({ page_id }) => `Review EdgePress page ${page_id || '(ask the user for the page id)'} before it goes live. Read only: change nothing.
 
@@ -128,8 +143,8 @@ Never change settings, the theme, or any template you did not create in this con
 2. Find the page's template and GET /templates/<templateId>: list its zones and blocks in order.
 3. For each block type, GET /blocks/<type>/schema once and check every stored config against it: keys the schema does not define (stored but not rendered), missing required fields, empty headings or buttons, links to "#" or placeholder URLs.
 4. Headings: one main heading for the page; flag a second hero or h1.
-5. Images: each should be in this site's media library with non-empty alt text (GET /media?search= or /media/<id>); flag images hot-linked from other sites.
-6. Report a short pass/fail list with the exact fix for each failure. Say that you checked stored data, not the rendered page: the user should open the page to confirm how it looks.`,
+5. Run ep_page_inspect with page_id ${page_id || '<id>'}: it renders the page (a draft through a private preview) as visitors get it. Check: robots matches intent (a page meant to stay private must not be indexable), title and description present, exactly one h1, valid JSON-LD, lang/dir right for the content's language, no images missing alt or hot-linked, no broken anchors or placeholder links.
+6. Report a short pass/fail list with the exact fix for each failure, and give the user the preview link (GET /pages/<id>/preview-url) to look at it themselves.`,
   },
 ];
 
@@ -140,6 +155,10 @@ Never change settings, the theme, or any template you did not create in this con
  * host.api(method, pathAndQuery, body) -> Promise<{ status, body }>, where
  *   pathAndQuery is already confined to /api/v1/ (see apiPath).
  * host.loadSpec() -> Promise<object> — the parsed OpenAPI document.
+ * host.fetchPage(pathAndQuery) -> Promise<{ status, headers, text }> — a page
+ *   of the site as an anonymous visitor gets it: no credentials, no redirects
+ *   followed.
+ * host.origin — "https://<site>", what fetchPage paths are relative to.
  */
 export async function handleMessage(msg, host) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg) || msg.jsonrpc !== '2.0') {
@@ -210,6 +229,7 @@ async function callTool(name, args, host) {
     return toolText(`HTTP ${res.status}${rateNote(res)}\n${text ?? ''}`, res.status >= 400);
   }
   if (name === 'ep_media_upload') return mediaUpload(args, host);
+  if (name === 'ep_page_inspect') return pageInspect(args, host);
   if (name === 'ep_api_spec') {
     let product = args.product;
     if (!product && !args.schema) {
@@ -278,11 +298,128 @@ export function specLookup(spec, { search, schema, product } = {}) {
   return `${lines.length} ${scoped ? product + ' ' : ''}operations. Narrow with search for full request/response detail.\n${lines.join('\n')}`;
 }
 
-// The tenant sends rate-limit headers only on a 429; surface the wait.
+// The tenant reports its per-token limit on every PAT response; a 429 also
+// says how long to wait.
 function rateNote(res) {
-  if (res.status !== 429) return '';
-  const after = res.headers?.get?.('Retry-After');
-  return after ? ` (rate limited: retry after ${after}s)` : ' (rate limited)';
+  const h = res.headers;
+  if (res.status === 429) {
+    const after = h?.get?.('Retry-After');
+    return after ? ` (rate limited: retry after ${after}s)` : ' (rate limited)';
+  }
+  const left = h?.get?.('X-RateLimit-Remaining');
+  const limit = h?.get?.('X-RateLimit-Limit');
+  if (left == null || !limit) return '';
+  const reset = Number(h.get('X-RateLimit-Reset')) - Math.floor(Date.now() / 1000);
+  return ` (${left}/${limit} requests left${reset > 0 ? `, resets in ${reset}s` : ''})`;
+}
+
+// ── ep_page_inspect ─────────────────────────────────────────────────────────
+// ponytail: regex over the HTML, not a DOM parser — the stdio host has no DOM
+// and these are flat, well-formed server-rendered pages. Good enough to count
+// and list; a page built from malformed markup can under-report.
+
+async function pageInspect(args, host) {
+  let path;
+  let preview = false;
+  if (args.page_id != null) {
+    if (!Number.isInteger(args.page_id) || args.page_id < 1) return toolText('page_id must be a positive integer.', true);
+    const res = await host.api('GET', `/api/v1/pages/${args.page_id}/preview-url`);
+    if (res.status >= 400 || !res.body?.url) {
+      return toolText(`Could not get a preview link: HTTP ${res.status}${rateNote(res)}\n${JSON.stringify(res.body)}`, true);
+    }
+    const u = new URL(res.body.url);
+    path = u.pathname + u.search;
+    preview = res.body.status !== 'published';
+  } else {
+    path = sitePath(args.path, host.origin);
+    if (!path) return toolText('path must be a page on this site, e.g. "/page/about" (not /api/...).', true);
+  }
+
+  // Follow same-site redirects (/<slug> -> /page/<slug>), never off-site.
+  let page;
+  const hops = [];
+  for (let i = 0; i < 4; i++) {
+    page = await host.fetchPage(path);
+    const to = page.status >= 300 && page.status < 400 ? sitePath(page.headers.get('Location'), host.origin) : null;
+    if (!to) break;
+    hops.push(`${page.status} ${path} -> ${to}`);
+    path = to;
+  }
+  const report = inspectHtml(page.text ?? '', page.headers);
+  return toolText(JSON.stringify({
+    path: path.replace(/([?&]_preview=)[^&]+/, '$1…'),
+    preview,
+    status: page.status,
+    ...(hops.length ? { redirects: hops } : {}),
+    ...report,
+  }, null, 2), page.status >= 400);
+}
+
+/**
+ * A path on this site (resolved against its origin, so a same-site absolute
+ * URL works too), never the API and never another host. Or null.
+ */
+export function sitePath(raw, origin) {
+  if (typeof raw !== 'string' || !raw) return null;
+  let u;
+  try { u = new URL(raw, origin); } catch { return null; }
+  if (u.origin !== origin || u.pathname.startsWith('/api/')) return null;
+  return u.pathname + u.search;
+}
+
+const strip = (s) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+const attr = (tag, name) => tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))?.slice(1).find((v) => v !== undefined);
+const metaContent = (html, key, val) => {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if ((attr(tag, key) ?? '').toLowerCase() === val) return attr(tag, 'content') ?? '';
+  }
+  return null;
+};
+
+export function inspectHtml(html, headers) {
+  const jsonld = [];
+  for (const m of html.matchAll(/<script\b[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const doc = JSON.parse(m[1]);
+      const types = [doc].flat().flatMap((d) => [d?.['@type'], ...(d?.['@graph'] ?? []).map((g) => g?.['@type'])]).flat().filter(Boolean);
+      jsonld.push(types.length ? types.join(', ') : '(no @type)');
+    } catch { jsonld.push('INVALID JSON'); }
+  }
+  // Script and style bodies are not content: drop them before scanning.
+  const body = html.replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1>/gi, ' ');
+  const htmlTag = body.match(/<html\b[^>]*>/i)?.[0] ?? '';
+  const headings = [...body.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi)].map((m) => `h${m[1]}: ${strip(m[2]).slice(0, 100)}`);
+  const ids = new Set([...body.matchAll(/\s(?:id|name)\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]));
+  const anchors = [...body.matchAll(/<a\b[^>]*>/gi)].map((m) => attr(m[0], 'href'));
+  const brokenAnchors = [...new Set(anchors.filter((h) => h && h.startsWith('#') && h.length > 1 && !ids.has(decodeURIComponent(h.slice(1)))))];
+  const placeholderLinks = anchors.filter((h) => h === '#' || h === '' || /^javascript:/i.test(h ?? '')).length;
+  const imgs = [...body.matchAll(/<img\b[^>]*>/gi)].map((m) => ({ src: attr(m[0], 'src') ?? '', alt: attr(m[0], 'alt') }));
+  const external = (src) => /^https?:\/\//i.test(src) && !src.includes('/media/') && !src.includes('/thumbnails/');
+  const robotsMeta = metaContent(html, 'name', 'robots');
+
+  return {
+    robots_meta: robotsMeta,
+    x_robots_tag: headers?.get?.('X-Robots-Tag') ?? null,
+    indexable: !/noindex|none/i.test(`${robotsMeta ?? ''} ${headers?.get?.('X-Robots-Tag') ?? ''}`),
+    cache_control: headers?.get?.('Cache-Control') ?? null,
+    title: strip(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '') || null,
+    description: metaContent(html, 'name', 'description'),
+    canonical: attr(html.match(/<link\b[^>]*rel\s*=\s*["']?canonical["']?[^>]*>/i)?.[0] ?? '', 'href') ?? null,
+    lang: attr(htmlTag, 'lang') ?? null,
+    dir: attr(htmlTag, 'dir') ?? null,
+    h1_count: headings.filter((h) => h.startsWith('h1')).length,
+    headings: headings.slice(0, 40),
+    jsonld,
+    images: {
+      total: imgs.length,
+      missing_alt: imgs.filter((i) => i.alt === undefined).map((i) => i.src).slice(0, 20),
+      empty_alt: imgs.filter((i) => i.alt === '').length,
+      hotlinked: imgs.filter((i) => external(i.src)).map((i) => i.src).slice(0, 20),
+    },
+    broken_anchors: brokenAnchors.slice(0, 20),
+    placeholder_links: placeholderLinks,
+    bytes: html.length,
+  };
 }
 
 async function mediaUpload(args, host) {

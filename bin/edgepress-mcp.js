@@ -30,6 +30,12 @@ const host = {
     try { parsed = text ? JSON.parse(text) : null; } catch { /* non-JSON body: pass through */ }
     return { status: r.status, body: parsed, headers: r.headers };
   },
+  origin: `https://${tenant}`,
+  // Anonymous on purpose: the visitor's view, never the caller's token.
+  async fetchPage(path) {
+    const r = await fetch(`https://${tenant}${path}`, { headers: { Accept: 'text/html' }, redirect: 'manual' });
+    return { status: r.status, headers: r.headers, text: await r.text() };
+  },
   async loadSpec() {
     const r = await fetch(SPEC_URL);
     if (!r.ok) throw new Error(`OpenAPI spec unavailable (HTTP ${r.status})`);

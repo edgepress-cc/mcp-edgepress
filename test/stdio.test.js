@@ -14,5 +14,5 @@ test('answers JSON-RPC line by line over stdio', async () => {
   await new Promise((r) => p.on('close', r));
   const msgs = out.trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(msgs.map((m) => m.id).sort(), [1, 2]); // notification gets no reply
-  assert.deepEqual(msgs.find((m) => m.id === 1).result.tools.map((t) => t.name), ['ep_request', 'ep_media_upload', 'ep_api_spec']);
+  assert.deepEqual(msgs.find((m) => m.id === 1).result.tools.map((t) => t.name), ['ep_request', 'ep_media_upload', 'ep_page_inspect', 'ep_api_spec']);
 });
