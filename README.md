@@ -60,6 +60,6 @@ For clients that only run local servers (e.g. Claude Desktop):
 ## Limits
 
 - Media upload (multipart) is not available through MCP — use the admin UI.
-- Large responses are truncated at 200k characters; page list endpoints instead.
+- Large responses are truncated at 50k characters; page list endpoints instead.
 
 `src/mcp.js` is a copy of `dispatcher/src/mcp.js` in the EdgePress platform repo — do not edit it here.

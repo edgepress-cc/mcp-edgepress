@@ -16,7 +16,7 @@
 // generic request plus a spec lookup — the MCP layer cannot drift from the
 // API's authorization or its route table.
 
-export const SERVER_INFO = { name: 'edgepress', version: '0.1.0' };
+export const SERVER_INFO = { name: 'edgepress', version: '0.1.1' };
 
 // Newest first. An unknown client version gets our newest; the client
 // disconnects if it cannot speak it (spec: lifecycle / version negotiation).
@@ -24,7 +24,8 @@ const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05
 
 // Tool output goes into the agent's context window; a full export would
 // swamp it. List endpoints paginate, so the agent can always ask for less.
-const MAX_TEXT = 200_000;
+// 50k chars is ~12k tokens: one big template fits, a whole export does not.
+const MAX_TEXT = 50_000;
 
 const SPEC_TTL_MS = 10 * 60 * 1000;
 let specCache = null; // { at, value }
@@ -123,6 +124,11 @@ async function callTool(name, args, host) {
     if (!path) return toolText('path must start with "/" and stay under /api/v1, e.g. "/posts?limit=3".', true);
     const body = method === 'GET' || method === 'DELETE' ? undefined : args.body;
     const res = await host.api(method, path, body);
+    // An unknown CMS route falls through to the site's HTML 404 page (136KB
+    // measured). Its markup tells an agent nothing and burns its context.
+    if (res.status >= 400 && typeof res.body === 'string' && /^\s*</.test(res.body)) {
+      res.body = { error: res.status === 404 ? 'not_found' : 'http_error', message: `No JSON answer for ${method} ${path} (the site returned an HTML page). Usually an unknown route: check it with ep_api_spec.` };
+    }
     const text = typeof res.body === 'string' ? res.body : JSON.stringify(res.body, null, 2);
     return toolText(`HTTP ${res.status}\n${text ?? ''}`, res.status >= 400);
   }
