@@ -37,6 +37,10 @@ Cursor / VS Code / other clients (`mcp.json`):
 }
 ```
 
+### ChatGPT, claude.ai and other OAuth connectors
+
+No token to paste: add a custom connector with the URL `https://<your-site>/api/mcp` and OAuth authentication. You sign in to your site, choose **read & write** or **read-only**, and the connector receives an API token named after it — revoke it any time under Admin → API tokens. (On a store, only admins can approve.)
+
 ## 2b. Local (stdio, Node 22+)
 
 For clients that only run local servers (e.g. Claude Desktop):
