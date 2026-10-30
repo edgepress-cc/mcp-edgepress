@@ -16,7 +16,7 @@
 // generic request plus a spec lookup — the MCP layer cannot drift from the
 // API's authorization or its route table.
 
-export const SERVER_INFO = { name: 'edgepress', version: '0.3.0' };
+export const SERVER_INFO = { name: 'edgepress', version: '0.3.1' };
 
 // Newest first. An unknown client version gets our newest; the client
 // disconnects if it cannot speak it (spec: lifecycle / version negotiation).
@@ -36,6 +36,7 @@ const INSTRUCTIONS = `You are connected to one EdgePress site (CMS or store) wit
 - Use ep_api_spec to find a route and its request body before writing. A 403 means the token or role does not allow the call; tell the user rather than retrying. A 429 tells you how long to wait.
 - Block types: on a CMS site GET /blocks lists them and GET /blocks/<type>/schema gives each one's config; on a store use /block-types and /block-types/<slug>/schema.
 - Page structure on a CMS site: prefer the REST routes (/templates, /templates/<id>/zones, /templates/<id>/blocks, /blocks/<id>, PUT /pages/<id>/template) over POST /graphql, which answers HTTP 200 even on failure. REST PATCH /blocks/<id> merges config; GraphQL replaces it.
+- The header menu is the navigation block's config.menuItems in the base layout template's header zone: GET /templates?isBaseLayout=true, GET /templates/<id>/blocks?zone=header, then PATCH /blocks/<blockId> {"config":{"menuItems":[…]}} with the complete list ({text, url, children?}); the site's categories are appended unless you also send "showCategories": false. PUT /pages/<id> is partial: send only the fields you change.
 - Files: use ep_media_upload (from a URL or base64), never ep_request.
 - To see a page as visitors get it — robots, title, headings, structured data, images, lang/dir — use ep_page_inspect. With page_id it also works for drafts, through a private noindex preview link (GET /pages/<id>/preview-url; give that url to the user to look at a draft).
 - Prompts build-landing-page and qa-landing-page describe the safe end-to-end flows.`;

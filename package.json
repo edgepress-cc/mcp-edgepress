@@ -1,6 +1,6 @@
 {
   "name": "@edgepress/mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server (stdio) for an EdgePress site's REST API, authenticated with your personal access token.",
   "license": "MIT",
   "author": "edgepress-cc",
